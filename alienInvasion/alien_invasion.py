@@ -14,7 +14,7 @@ def run_game():
     screen = pg.display.set_mode((ai_settings.screen_width, ai_settings.screen_height))
     pg.display.set_caption("Alien Invasion")
 
-    ship = Ship(screen=screen)
+    ship = Ship(ai_settings=ai_settings, screen=screen)
 
     # Start the main loop for the game.
     while True:
