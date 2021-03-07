@@ -1,39 +1,109 @@
-import pygame
+import pygame as pg
+from pygame.sprite import Sprite
+from timer import Timer
+from pygame.sprite import Group
+from bullet import BulletFromShip
 
 
-class Ship():
-    def __init__(self, ai_settings, screen):
+class Ship(Sprite):
+    images = [pg.image.load('images/ship.png')]
+    images_boom = [pg.image.load('images/ship_boom0' + str(i) + '.png') for i in range(10)]
+    timer = Timer(frames=images, wait=1000)
+    timer_boom = Timer(frames=images_boom, wait=50, looponce=True)
+
+    def __init__(self, sound, game, barriers=None, aliens=None):
         """Initialize the ship and set its starting position."""
-        self.screen = screen
-        self.ai_settings = ai_settings
+        super().__init__()
+        self.settings = game.settings
+        self.screen = game.screen
+        self.sound = sound
+        self.game = game
+        self.barriers = barriers
+        self.aliens = aliens
 
-        # Load the ship image and get its rect.
-        self.image = pygame.image.load('images/ship.bmp')
+        self.image = pg.image.load('images/ship.png')
         self.rect = self.image.get_rect()
-        self.screen_rect = screen.get_rect()
+        self.screen_rect = game.screen.get_rect()
 
-        # Start each new ship at the bottom center of the screen.
-        self.rect.centerx = self.screen_rect.centerx
-        self.rect.bottom = self.screen_rect.bottom
+        self.center = 0
+        self.center_ship()
 
-        # Store a decimal value for the ship's center.
-        self.center = float(self.rect.centerx)
-
-        # Movement flags.
         self.moving_right = False
         self.moving_left = False
 
-    def update(self):
-        """Update the ship's position based on movement flags."""
-        # Update the ship's center value, not the rect.
-        if self.moving_right and self.rect.right < self.screen_rect.right:
-            self.center += self.ai_settings.ship_speed_factor
-        if self.moving_left and self.rect.left > 0:
-            self.center -= self.ai_settings.ship_speed_factor
+        self.shooting_bullets = False
+        self.bullets_attempted = 0
+        self.dead, self.reallydead, self.timer_switched = False, False, False
+        self.ship_group = Group()
+        self.ship_group.add(self)
+        self.bullet_group_that_kill_aliens = Group()
+        self.timer = Ship.timer
 
-        # Update rect object from self.center.
+    def add_bullet(self, game, x, y):
+        self.bullet_group_that_kill_aliens.add(BulletFromShip(game=game, x=x, y=y))
+
+    def bullet_group(self): return self.bullet_group_that_kill_aliens
+
+    def group(self): return self.ship_group
+
+    def killed(self):
+        if not self.dead and not self.reallydead:
+            self.dead = True
+        if self.dead and not self.timer_switched:
+            self.timer = Ship.timer_boom
+            self.timer_switched = True
+
+    def center_ship(self):
+        self.rect.centerx = self.screen_rect.centerx
+        self.rect.bottom = self.screen_rect.bottom
+        self.center = float(self.rect.centerx)
+
+    def update(self):
+        self.bullet_group_that_kill_aliens.update()
+        bullet_alien_collisions = pg.sprite.groupcollide(self.aliens.group(), self.bullet_group_that_kill_aliens,
+                                                         False, True)
+        if self.dead and self.timer_switched:
+            if self.timer.frame_index() == len(Ship.images_boom) - 1:
+                self.dead = False
+                self.timer_switched = False
+                self.reallydead = True
+                self.timer.reset()
+                self.game.reset()
+
+        if bullet_alien_collisions:
+            for alien in bullet_alien_collisions:
+                alien.dead = True
+                alien.killed()
+
+        bullet_barrier_collisions = pg.sprite.groupcollide(self.barriers.group(),
+                                                           self.bullet_group_that_kill_aliens,
+                                                           False, True)
+        if bullet_barrier_collisions:
+            for barrier_block in bullet_barrier_collisions:
+                barrier_block.damaged()
+
+        if len(self.aliens.group()) == 0:
+            self.bullet_group_that_kill_aliens.empty()
+            self.settings.increase_speed()
+            self.aliens.create_fleet()
+            self.game.stats.level += 1
+            self.game.sb.prep_level()
+
+        delta = self.settings.ship_speed_factor
+        if self.moving_right and self.rect.right < self.screen_rect.right:
+            self.center += delta
+        if self.moving_left and self.rect.left > 0:
+            self.center -= delta
+        if self.shooting_bullets and not self.dead:
+            self.sound.shoot_bullet()
+            self.add_bullet(game=self.game, x=self.rect.centerx, y=self.rect.top)
+            self.shooting_bullets = False
         self.rect.centerx = self.center
 
-    def blitme(self):
-        """Draw the ship at its current location."""
-        self.screen.blit(self.image, self.rect)
+    def draw(self):
+        for bullet in self.bullet_group_that_kill_aliens:
+            bullet.draw()
+        image = self.timer.imagerect()
+        rect = image.get_rect()
+        rect.x, rect.y = self.rect.x, self.rect.y
+        self.screen.blit(image, rect)
