@@ -1,4 +1,4 @@
-# CPSC386-alien_invasion
+# alien invasion project
 alien invasion project
 
 contributors:
