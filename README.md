@@ -1,5 +1,5 @@
-# alien invasion project
-alien invasion project
+# Alien Invasion
+space invaders clone developed for game design class.
 
 contributors:
 
